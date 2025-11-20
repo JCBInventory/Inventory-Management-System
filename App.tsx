@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { InventoryItem, QuotationItem } from './types';
 import useLocalStorage from './hooks/useLocalStorage';
@@ -9,6 +8,9 @@ import BottomNav from './components/BottomNav';
 import SetupModal from './components/SetupModal';
 import LoginModal from './components/LoginModal';
 import { fetchInventoryFromSheet } from './utils/sheetUtils';
+import { db, auth } from './firebaseConfig';
+import { collection, getDocs, setDoc, doc, onSnapshot } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 type Tab = 'inventory' | 'quotation';
 
@@ -19,7 +21,9 @@ const App: React.FC = () => {
     const [lastUpdated, setLastUpdated] = useLocalStorage<string>('last_updated', '');
     
     // Session State
-    const [isLoggedIn, setIsLoggedIn] = useState(false); // Parent login status
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [adminEmail, setAdminEmail] = useState('');
+    const [adminPassword, setAdminPassword] = useState('');
     
     // Quotation state
     const [quotation, setQuotation] = useState<QuotationItem[]>([]);
@@ -34,10 +38,55 @@ const App: React.FC = () => {
     // Derived state
     const isConfigured = !!sheetUrl && inventory.length > 0;
 
-    // Initialize: Only fetch if URL exists. If not, wait for parent.
+    // Initialize: Fetch sheet URL from Firebase on app load
     useEffect(() => {
-        if (sheetUrl && inventory.length === 0) {
-            refreshData(sheetUrl);
+        const fetchSettingsFromFirebase = async () => {
+            try {
+                const settingsRef = collection(db, 'settings');
+                const snapshot = await getDocs(settingsRef);
+                
+                if (!snapshot.empty) {
+                    const doc = snapshot.docs[0];
+                    const firebaseUrl = doc.data().sheetUrl;
+                    
+                    if (firebaseUrl && firebaseUrl !== sheetUrl) {
+                        setSheetUrl(firebaseUrl);
+                        // Fetch inventory with the new URL
+                        refreshData(firebaseUrl);
+                    } else if (sheetUrl && inventory.length === 0) {
+                        // If we have URL in local storage, use it
+                        refreshData(sheetUrl);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching Firebase settings:', error);
+                // Fallback to local storage
+                if (sheetUrl && inventory.length === 0) {
+                    refreshData(sheetUrl);
+                }
+            }
+        };
+
+        fetchSettingsFromFirebase();
+
+        // Listen for real-time updates from Firebase
+        try {
+            const settingsRef = collection(db, 'settings');
+            const unsubscribe = onSnapshot(settingsRef, (snapshot) => {
+                if (!snapshot.empty) {
+                    const doc = snapshot.docs[0];
+                    const firebaseUrl = doc.data().sheetUrl;
+                    
+                    if (firebaseUrl && firebaseUrl !== sheetUrl) {
+                        setSheetUrl(firebaseUrl);
+                        refreshData(firebaseUrl);
+                    }
+                }
+            });
+
+            return () => unsubscribe();
+        } catch (error) {
+            console.error('Error setting up Firebase listener:', error);
         }
     }, []);
 
@@ -52,7 +101,6 @@ const App: React.FC = () => {
         } catch (error: any) {
             console.error(error);
             showNotification(error.message || 'Failed to fetch data');
-            // We don't force setup here for child accounts, they just see error/disabled
             if (isLoggedIn) {
                 setShowSetup(true); 
             }
@@ -61,29 +109,64 @@ const App: React.FC = () => {
         }
     };
 
-    const handleLogin = () => {
-        setIsLoggedIn(true);
-        setShowLogin(false);
-        showNotification("Parent access granted");
-        if (!sheetUrl) {
-            setShowSetup(true);
+    const handleLogin = async () => {
+        if (!adminEmail || !adminPassword) {
+            showNotification('Please enter email and password');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
+            setIsLoggedIn(true);
+            setShowLogin(false);
+            setAdminEmail('');
+            setAdminPassword('');
+            showNotification('Parent access granted');
+            
+            if (!sheetUrl) {
+                setShowSetup(true);
+            }
+        } catch (error: any) {
+            showNotification('Invalid credentials. Please try again.');
+            console.error(error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const handleLogout = () => {
-        setIsLoggedIn(false);
-        showNotification("Logged out");
-        setShowSetup(false);
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            setIsLoggedIn(false);
+            showNotification('Logged out');
+            setShowSetup(false);
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
     };
 
-    const handleSetupSave = (url: string) => {
-        setSheetUrl(url);
-        refreshData(url);
+    const handleSetupSave = async (url: string) => {
+        setIsLoading(true);
+        try {
+            // Save to Firebase
+            const settingsDoc = doc(db, 'settings', 'global');
+            await setDoc(settingsDoc, { sheetUrl: url }, { merge: true });
+            
+            setSheetUrl(url);
+            await refreshData(url);
+            showNotification('Settings saved to cloud!');
+        } catch (error: any) {
+            console.error(error);
+            showNotification('Failed to save settings: ' + error.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleSettingsClick = () => {
         if (window.confirm("Do you want to update the Google Sheet URL? This will refresh the inventory.")) {
-            setQuotation([]); // Clear quotation as data might change
+            setQuotation([]);
             setShowSetup(true);
         }
     };
@@ -132,6 +215,11 @@ const App: React.FC = () => {
                 isOpen={showLogin}
                 onClose={() => setShowLogin(false)}
                 onLogin={handleLogin}
+                onEmailChange={setAdminEmail}
+                onPasswordChange={setAdminPassword}
+                adminEmail={adminEmail}
+                adminPassword={adminPassword}
+                isLoading={isLoading}
             />
 
             <SetupModal 
