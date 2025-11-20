@@ -1,19 +1,18 @@
 import React from "react";
 
-interface HeaderProps {
-  onLoginClick: () => void;
-  userEmail: string | null;
-}
-
-const Header: React.FC<HeaderProps> = ({ onLoginClick, userEmail }) => {
+const Header: React.FC = () => {
   return (
-    <header className="header">
-      <h1>Inventory Management System</h1>
-
-      <button onClick={onLoginClick}>
-        {userEmail ? `Logged in: ${userEmail}` : "Login"}
-      </button>
-    </header>
+    <div
+      style={{
+        background: "#222",
+        color: "white",
+        padding: "15px",
+        fontSize: "20px",
+        fontWeight: "bold",
+      }}
+    >
+      JCB Inventory Management System
+    </div>
   );
 };
 
