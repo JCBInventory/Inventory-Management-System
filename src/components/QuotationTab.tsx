@@ -1,18 +1,10 @@
 import React from "react";
-import { QuotationItem } from "../../types";
 
-interface Props {
-  quotations: QuotationItem[];
-  setQuotations: (items: QuotationItem[]) => void;
-}
-
-const QuotationTab: React.FC<Props> = ({ quotations }) => {
+const QuotationTab: React.FC = () => {
   return (
-    <div>
-      <h2>Quotations</h2>
-      {quotations.map((q) => (
-        <p key={q.id}>{q.partName}</p>
-      ))}
+    <div style={{ padding: "20px" }}>
+      <h2>Quotation</h2>
+      <p>Your quotation data will be displayed here.</p>
     </div>
   );
 };
