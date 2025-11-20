@@ -67,3 +67,31 @@ const InventoryTab: React.FC = () => {
   return (
     <div style={{ padding: 20 }}>
       <h2>Inventory</h2>
+
+      {loading ? (
+        <p>Loading…</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Item No.</th>
+              <th>Description</th>
+              <th>MRP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((it, idx) => (
+              <tr key={idx}>
+                <td>{it["Item No."]}</td>
+                <td>{it["Item Description"]}</td>
+                <td>{it.MRP}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
+export default InventoryTab;
