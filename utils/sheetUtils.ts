@@ -1,4 +1,3 @@
-
 import { InventoryItem } from '../types';
 
 // Helper to parse a CSV line correctly handling quotes
@@ -111,63 +110,35 @@ export const fetchInventoryFromSheet = async (sheetUrl: string): Promise<Invento
         throw new Error("Invalid Google Sheet URL. Could not extract Sheet ID.");
     }
 
-    // Strategy:
-    // 1. We try multiple Google Sheets export URLs.
-    // 2. We try multiple CORS proxies for each URL.
-    // 3. We strictly validate the response is not HTML.
+    // ✅ FIXED: Direct CSV export URL - works on ALL devices without CORS proxies
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 
-    const targetUrls = [
-        // GViz API is often more permissive for programmatic access
-        `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${gid}`,
-        // Standard Export URL
-        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`
-    ];
+    try {
+        // Add timestamp to bypass any browser caching
+        const urlWithCacheBust = csvUrl + `&_=${Date.now()}`;
 
-    const proxies = [
-        // AllOrigins: Reliable, supports raw output
-        (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        // CodeTabs: Good fallback
-        (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-        // CorsProxy.io: Sometimes flaky but works
-        (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        // Direct: Works if "Published to Web" and browser environment allows it (or extension)
-        (url: string) => url
-    ];
+        const res = await fetch(urlWithCacheBust);
 
-    for (const targetUrl of targetUrls) {
-        for (const proxy of proxies) {
-            try {
-                const fetchUrl = proxy(targetUrl);
-                // Add timestamp to prevent caching
-                const urlWithCacheBust = fetchUrl + (fetchUrl.includes('?') ? '&' : '?') + `_=${Date.now()}`;
-
-                const res = await fetch(urlWithCacheBust);
-
-                if (!res.ok) continue;
-
-                const text = await res.text();
-
-                // Critical Check: Google redirects to HTML login/error pages if access is denied.
-                // If we get HTML, this specific proxy/URL combo failed.
-                if (text.trim().startsWith('<') || text.includes('<!DOCTYPE html') || text.includes('<html')) {
-                    continue; 
-                }
-
-                // Basic CSV validation (should contain commas)
-                if (!text.includes(',')) {
-                    continue;
-                }
-
-                // If we get here, it's likely valid CSV
-                return parseInventoryCSV(text);
-
-            } catch (err) {
-                console.warn(`Fetch failed for ${targetUrl} via proxy`, err);
-                // Continue to next combination
-            }
+        if (!res.ok) {
+            throw new Error(`HTTP error! status: ${res.status}`);
         }
-    }
 
-    // If loop finishes without returning
-    throw new Error("Access Denied: Received HTML instead of CSV data. Please ensure your Google Sheet is set to 'Anyone with the link can view'.");
+        const text = await res.text();
+
+        // Check if we got HTML instead of CSV (access denied)
+        if (text.trim().startsWith('<') || text.includes('<!DOCTYPE html') || text.includes('<html')) {
+            throw new Error("Access Denied: Your Google Sheet must be shared publicly. Go to Share > Anyone with the link can view");
+        }
+
+        // Basic CSV validation
+        if (!text.includes(',')) {
+            throw new Error("Sheet appears to be empty or invalid format.");
+        }
+
+        return parseInventoryCSV(text);
+
+    } catch (err: any) {
+        console.error('Sheet fetch error:', err);
+        throw new Error(err.message || "Failed to fetch data from Google Sheet. Make sure it's shared publicly.");
+    }
 };
