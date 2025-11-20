@@ -1,18 +1,10 @@
 import React from "react";
-import { InventoryItem } from "../../types";
 
-interface Props {
-  inventory: InventoryItem[];
-  setInventory: (items: InventoryItem[]) => void;
-}
-
-const InventoryTab: React.FC<Props> = ({ inventory }) => {
+const InventoryTab: React.FC = () => {
   return (
-    <div>
+    <div style={{ padding: "20px" }}>
       <h2>Inventory</h2>
-      {inventory.map((item) => (
-        <p key={item.id}>{item.name}</p>
-      ))}
+      <p>Your inventory data will be displayed here.</p>
     </div>
   );
 };
