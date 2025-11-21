@@ -1,0 +1,5 @@
+{
+  "name": "Inventory Management System",
+  "description": "A comprehensive web application to manage inventory items. It allows users to add, view, edit, delete, and search for parts with details like part number, description, MRP, value, category, and date added.",
+  "requestFramePermissions": []
+}
